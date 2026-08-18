@@ -9,6 +9,10 @@ from uuid import UUID
 from supabase import Client
 
 from app.db.supabase import get_supabase_client
+from app.services.portfolio_ledger.economics import (
+    TransactionEconomicError,
+    validate_transaction_economics,
+)
 
 
 DraftStatus = Literal["pending", "confirmed", "all"]
@@ -109,6 +113,11 @@ class SupabaseTransactionWorkflowRepository:
         return hydrated
 
     def confirm_draft(self, *, user_id: UUID, draft_id: UUID) -> dict[str, Any]:
+        draft = self._get_draft(user_id=user_id, draft_id=draft_id)
+        if draft is None:
+            raise TransactionDraftNotFound
+        _validate_payload_economics(draft)
+
         try:
             response = (
                 self._get_client()
@@ -124,6 +133,11 @@ class SupabaseTransactionWorkflowRepository:
         except Exception as exc:
             if "Transaction draft not found" in str(exc):
                 raise TransactionDraftNotFound from exc
+            if "transactions_buy_sell_gross_matches_quantity_price" in str(exc):
+                raise TransactionEconomicError(
+                    f"{draft['transaction_type']} gross amount does not match "
+                    "quantity \u00d7 unit price."
+                ) from exc
             raise
 
         data = response.data
@@ -141,6 +155,7 @@ class SupabaseTransactionWorkflowRepository:
         user_id: UUID,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
+        _validate_payload_economics(payload)
         response = (
             self._get_client()
             .table("transaction_drafts")
@@ -200,6 +215,8 @@ class SupabaseTransactionWorkflowRepository:
                 "status": "pending",
                 "confirmed_transaction_id": None,
             }
+
+        _validate_payload_economics({**existing, **update_payload})
 
         response = (
             self._get_client()
@@ -437,6 +454,15 @@ def _utc_datetime(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+def _validate_payload_economics(payload: dict[str, Any]) -> None:
+    validate_transaction_economics(
+        transaction_type=str(payload.get("transaction_type") or ""),
+        quantity=payload.get("quantity"),
+        unit_price=payload.get("unit_price"),
+        gross_amount=payload.get("gross_amount"),
+    )
 
 
 class _Unset:

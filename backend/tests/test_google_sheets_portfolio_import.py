@@ -208,6 +208,7 @@ def test_current_workbook_builds_review_only_plan(tmp_path: Path):
     assert btc.currency == "USDT"
     assert btc.fee_unit == FeeUnit.ASSET_UNITS
     assert btc.fee_amount == Decimal("0.0000023")
+    assert btc.gross_amount == btc.quantity * btc.unit_price
     assert btc.raw_source_data["sheet"] == "Transactions"
     assert btc.raw_source_data["row_number"] == 5
     assert btc.source_metadata["formula_derived_summary_columns_ignored"] is True
@@ -523,6 +524,9 @@ def test_repository_stages_drafts_and_never_confirms_transactions(tmp_path: Path
     btc = next(row for row in drafts if row["source_identifier"] == "SRC-BTC")
     assert btc["fee_unit"] == "ASSET_UNITS"
     assert btc["fee_amount"] == "0.0000023"
+    assert Decimal(btc["gross_amount"]) == (
+        Decimal(btc["quantity"]) * Decimal(btc["unit_price"])
+    )
     batch_updates = [
         query
         for query in client.queries
