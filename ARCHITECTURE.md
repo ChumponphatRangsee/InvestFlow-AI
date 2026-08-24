@@ -1,6 +1,6 @@
 # Research Ledger Architecture
 
-This document separates the implemented system from intended boundaries. Supabase migrations remain authoritative for exact schema; see [ROADMAP.md](ROADMAP.md) for implementation order.
+This document separates the implemented system from intended boundaries. Supabase migrations remain authoritative for exact schema; see [docs/data-contracts.md](docs/data-contracts.md) for table responsibilities, [docs/investment-logic.md](docs/investment-logic.md) for scoring and decision rules, and [ROADMAP.md](ROADMAP.md) for implementation order.
 
 ## System Overview
 

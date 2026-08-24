@@ -18,12 +18,17 @@ It is not a live brokerage or automated trading system. The current portfolio en
 Use this order:
 
 1. GitHub code and Supabase migrations define what currently exists.
-2. [ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) defines the accepted portfolio migration contract; it does not mean the planned ledger schema exists yet.
-3. [ROADMAP.md](ROADMAP.md) defines intended implementation order.
-4. [ARCHITECTURE.md](ARCHITECTURE.md) defines architectural constraints.
-5. [README.md](README.md) provides setup and a high-level overview.
+2. [docs/data-contracts.md](docs/data-contracts.md) explains model/table responsibilities and data boundaries.
+3. [docs/investment-logic.md](docs/investment-logic.md) defines investment decision logic and scoring separation.
+4. [ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) defines the accepted portfolio migration contract.
+5. [ROADMAP.md](ROADMAP.md) defines intended implementation order.
+6. [ARCHITECTURE.md](ARCHITECTURE.md) defines architectural constraints.
+7. [docs/testing-playbook.md](docs/testing-playbook.md) defines test selection and reporting expectations.
+8. [README.md](README.md) provides setup and a high-level overview.
 
-The README contains some stale descriptions. If code, migrations, tests, and documentation disagree, inspect the implementation and recent relevant commits or pull requests, then reconcile the documentation before coding.
+If code, migrations, tests, and documentation disagree, inspect the implementation and recent relevant commits or pull requests, then reconcile the documentation before coding.
+
+Do not start PR5 until the documentation refactor task is complete and reviewed.
 
 ## Current Boundaries
 
@@ -35,7 +40,7 @@ The README contains some stale descriptions. If code, migrations, tests, and doc
 - Market data flows through `MarketDataService`, the Supabase snapshot cache, and `YFinanceProvider`.
 - The LangGraph flow exists, but its researcher is a placeholder and its valuation/decision logic is only a prototype. Do not present it as production-grade AI research.
 - `portfolios` is the existing legacy paper-holding implementation. Preserve it until a later, explicitly scoped migration replaces its responsibilities.
-- The portfolio-ledger schema, Google Sheets import, transaction workflow, calculation engine, and dashboard changes are planned; ADR 0001 documents their contract but does not implement them.
+- The portfolio-ledger schema, Google Sheets import, deterministic calculation engine, transaction workflow, and portfolio frontend are implemented through PR4 plus the portfolio frontend redesign. PR5 prices, FX, and performance remain next.
 
 ## Before Coding
 

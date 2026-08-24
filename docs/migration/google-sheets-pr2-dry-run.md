@@ -1,5 +1,13 @@
 # PR 2 Google Sheets staging dry-run
 
+Status: Historical migration report.
+
+This document records the PR2 Google Sheets staging and dry-run result. It is
+not the current schema contract and should not be treated as active
+implementation instructions. For current data boundaries, use
+[`docs/data-contracts.md`](../data-contracts.md); for exact schema, use
+Supabase migrations.
+
 Date: 2026-08-07  
 Workbook: [Investment Portfolio Tracker - Chumponphat](https://docs.google.com/spreadsheets/d/1MUZD_nevvmH3yx972Ep6o8pCRmsdd_IgzSzjD6TPCjw)  
 Workbook time zone: Asia/Bangkok  
