@@ -1,55 +1,20 @@
 # Research Ledger
 
-Research Ledger is an AI-assisted investment research workspace combining sector-aware quantitative screening, multi-agent AI analysis, human review, and paper-portfolio thesis tracking.
+Research Ledger is an AI-assisted investment research workspace. It helps an
+authenticated user discover ideas, run sector-aware quantitative screens,
+review AI-assisted research, and track a paper portfolio through a human
+decision workflow.
 
-Research Ledger is not a financial data terminal, autonomous trading bot, or brokerage execution system. Its intended flow is:
+Research Ledger is not a financial data terminal, autonomous trading bot, live
+brokerage, or order execution system. Any legacy route or UI wording that says
+`execute` refers to a paper-portfolio action, not a real trade.
+
+The intended flow is:
 
 ```text
 Discover -> Quantitative Screen -> AI Research -> Human Review
          -> Paper Portfolio -> Thesis Tracking -> Re-evaluation
 ```
-
-## Architecture
-
-```text
-+--------------------------------------------------------------------------+
-|                    Research Ledger Monorepo                              |
-+------------------------------+-------------------------------------------+
-| frontend/ (Next.js 15)       | backend/ (FastAPI)                        |
-| - Dashboard (Tremor)         | - REST API                                 |
-| - Analysis Inbox             | - LangGraph agent pipeline                 |
-| - Portfolio view             | - Celery workers + beat scheduler          |
-| - Supabase Auth client       | - sector-aware screener                    |
-+------------------------------+-------------------------------------------+
-| supabase/ - PostgreSQL schema, RLS policies, and ownership migrations     |
-+--------------------------------------------------------------------------+
-| docker-compose - Postgres, Redis, FastAPI, Celery, Next.js                |
-+--------------------------------------------------------------------------+
-```
-
-### Data Flow
-
-1. **Celery Beat** is currently disabled for unowned global screening; authenticated users can trigger screening through the API/UI.
-2. **Screener** fetches market data through the current yfinance-backed service, classifies each ticker by sector/business model, applies strategy-specific quantitative rules, and produces score, confidence, explanations, and warnings.
-3. Top-ranked passing candidates are sent to **LangGraph**, which currently runs a prototype pipeline:
-   - Researcher -> Financial Analyst -> Valuator -> Decision Maker
-4. Results land in **analysis_inbox** with `status = pending_review` as the human review breakpoint.
-5. User reviews on the **Inbox** page and can approve or discard the analysis.
-6. Approved items can create a user-owned **paper holding** in the portfolio. The legacy backend route name uses `execute`, but this is not broker execution or a live trade.
-
-## Portfolio Migration Contract
-
-[ADR 0001](docs/adr/0001-supabase-portfolio-migration-contract.md) establishes Supabase Postgres as the target source of truth for portfolio data. The target ledger uses THB as its base currency, weighted-average cost by account and asset, and a universal asset model covering stocks, crypto, and later asset classes.
-
-Transactions follow Draft -> Human review -> Confirm. Confirmed transactions are immutable, and the source draft becomes audit-stable once referenced; mistakes are handled with linked reversal or correcting transactions. Every exposed user-owned database object requires both owner-scoped RLS and explicit least-privilege grants.
-
-Google Sheets remains writable during migration and dual-run. It becomes a read-only archive only after the contract's reconciliation, idempotency, calculation, and security gates pass. Portfolio Migration precedes Screener Expansion in the [roadmap](ROADMAP.md).
-
-PR 2 adds strict staging for the current 15-tab Google Sheets workbook. The
-importer preserves entered and effective cell evidence, normalizes rows into
-owner-scoped drafts, isolates errors, deduplicates source fingerprints, and
-produces a reconciliation report. It never creates confirmed transactions.
-The current `portfolios` paper-holding implementation remains unchanged.
 
 ## Quick Start
 
@@ -135,10 +100,18 @@ confirmed transaction.
 ## Project Structure
 
 ```text
-InvestFlow-AI/  # repository name retained pending a future GitHub rename
+Research-Ledger/
 |-- docker-compose.yml
 |-- .env.example
-|-- docs/adr/               # accepted architecture decision records
+|-- AGENTS.md                # AI agent implementation rules
+|-- ARCHITECTURE.md          # architecture constraints and system boundaries
+|-- ROADMAP.md               # implementation sequence
+|-- docs/
+|   |-- investment-logic.md    # scoring and investment decision rules
+|   |-- data-contracts.md      # model/table responsibilities
+|   |-- testing-playbook.md    # test selection and reporting
+|   |-- adr/                   # accepted architecture decision records
+|   `-- migration/             # historical migration reports
 |-- frontend/
 |   |-- src/app/              # Next.js App Router pages
 |   |-- src/components/       # shadcn/ui + domain components
@@ -155,7 +128,7 @@ InvestFlow-AI/  # repository name retained pending a future GitHub rename
     `-- tests/database/       # pgTAP schema, ownership, RLS, and integrity tests
 ```
 
-## API Endpoints
+## Main API Endpoints
 
 | Method | Path | Description |
 | --- | --- | --- |
@@ -167,6 +140,19 @@ InvestFlow-AI/  # repository name retained pending a future GitHub rename
 | POST | `/api/analysis/inbox/{id}/discard` | Human discard |
 | GET | `/api/portfolio/` | List user paper holdings |
 | POST | `/api/portfolio/execute/{inbox_id}` | Create a paper holding from an approved analysis; `execute` is legacy route language |
+| GET | `/api/portfolio/ledger/summary` | Read owner-scoped portfolio ledger summary |
+| POST | `/api/portfolio/ledger/rebuild` | Rebuild owner-scoped portfolio projections through the backend |
+
+## Key Documentation
+
+- [AGENTS.md](AGENTS.md) - AI implementation rules and source-of-truth order
+- [ARCHITECTURE.md](ARCHITECTURE.md) - implemented architecture and constraints
+- [ROADMAP.md](ROADMAP.md) - current implementation sequence
+- [docs/investment-logic.md](docs/investment-logic.md) - scoring and investment decision rules
+- [docs/data-contracts.md](docs/data-contracts.md) - model/table responsibilities and boundaries
+- [docs/testing-playbook.md](docs/testing-playbook.md) - test selection and reporting expectations
+- [docs/adr/0001-supabase-portfolio-migration-contract.md](docs/adr/0001-supabase-portfolio-migration-contract.md) - accepted portfolio migration contract
+- [docs/migration/google-sheets-pr2-dry-run.md](docs/migration/google-sheets-pr2-dry-run.md) - historical PR2 migration report
 
 ## Legacy
 
