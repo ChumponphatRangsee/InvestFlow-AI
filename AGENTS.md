@@ -40,7 +40,7 @@ Do not start PR5 until the documentation refactor task is complete and reviewed.
 - Market data flows through `MarketDataService`, the Supabase snapshot cache, and `YFinanceProvider`.
 - The LangGraph flow exists, but its researcher is a placeholder and its valuation/decision logic is only a prototype. Do not present it as production-grade AI research.
 - `portfolios` is the existing legacy paper-holding implementation. Preserve it until a later, explicitly scoped migration replaces its responsibilities.
-- The portfolio-ledger schema, Google Sheets import, deterministic calculation engine, transaction workflow, and portfolio frontend are implemented through PR4 plus the portfolio frontend redesign. PR5 prices, FX, and performance remain next.
+- The portfolio-ledger schema, Google Sheets import, deterministic calculation engine, transaction workflow, and current portfolio ledger views/APIs are implemented through the completed portfolio migration work to date. PR5 prices, FX, and performance remain next.
 
 ## Before Coding
 

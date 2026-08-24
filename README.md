@@ -107,8 +107,11 @@ Research-Ledger/
 |-- ARCHITECTURE.md          # architecture constraints and system boundaries
 |-- ROADMAP.md               # implementation sequence
 |-- docs/
-|   |-- adr/                 # accepted architecture decision records
-|   `-- migration/           # historical migration reports
+|   |-- investment-logic.md    # scoring and investment decision rules
+|   |-- data-contracts.md      # model/table responsibilities
+|   |-- testing-playbook.md    # test selection and reporting
+|   |-- adr/                   # accepted architecture decision records
+|   `-- migration/             # historical migration reports
 |-- frontend/
 |   |-- src/app/              # Next.js App Router pages
 |   |-- src/components/       # shadcn/ui + domain components

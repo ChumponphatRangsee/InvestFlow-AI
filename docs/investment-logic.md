@@ -155,5 +155,6 @@ human decisions. Deterministic calculations should live in typed backend code
 with tests. LLM output should be structured, source-backed, and treated as
 advisory until reviewed.
 
-PR5 should focus on prices, FX, valuation snapshots, and performance plumbing.
-It should not prematurely implement the full research-to-decision bridge.
+PR5 should focus on prices, FX, portfolio valuation snapshots, benchmark
+snapshots, and performance plumbing. It should not prematurely implement the
+full research-to-decision bridge.
