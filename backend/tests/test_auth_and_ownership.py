@@ -752,6 +752,24 @@ def test_transaction_draft_create_uses_current_user(monkeypatch):
         "BUY gross amount does not match quantity \u00d7 unit price."
     )
     assert len(calls) == 1
+
+    response = client.post(
+        "/api/portfolio/transaction-drafts",
+        json={
+            "investment_account_id": str(INBOX_ID),
+            "asset_id": str(TICKER_ID),
+            "transaction_type": "BUY",
+            "transaction_at": "2026-01-02T00:00:00+00:00",
+            "quantity": "2",
+            "currency": "USD",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "BUY and SELL drafts require quantity and unit_price"
+    )
+    assert len(calls) == 1
     app.dependency_overrides.clear()
 
 
