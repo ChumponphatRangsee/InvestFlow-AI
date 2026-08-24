@@ -717,8 +717,9 @@ def test_transaction_draft_create_uses_current_user(monkeypatch):
             "asset_id": str(TICKER_ID),
             "transaction_type": "BUY",
             "transaction_at": "2026-01-02T00:00:00+00:00",
-            "quantity": "1",
-            "unit_price": "10",
+            "quantity": "2",
+            "unit_price": "100",
+            "gross_amount": "200",
             "currency": "usd",
             "notes": " manual ",
         },
@@ -729,7 +730,46 @@ def test_transaction_draft_create_uses_current_user(monkeypatch):
     assert calls[0][0] == USER_A
     assert "user_id" not in calls[0][1]
     assert calls[0][1]["currency"] == "USD"
+    assert calls[0][1]["gross_amount"] == "200"
     assert calls[0][1]["notes"] == "manual"
+
+    response = client.post(
+        "/api/portfolio/transaction-drafts",
+        json={
+            "investment_account_id": str(INBOX_ID),
+            "asset_id": str(TICKER_ID),
+            "transaction_type": "BUY",
+            "transaction_at": "2026-01-02T00:00:00+00:00",
+            "quantity": "3",
+            "unit_price": "100",
+            "gross_amount": "200",
+            "currency": "USD",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "BUY gross amount does not match quantity \u00d7 unit price."
+    )
+    assert len(calls) == 1
+
+    response = client.post(
+        "/api/portfolio/transaction-drafts",
+        json={
+            "investment_account_id": str(INBOX_ID),
+            "asset_id": str(TICKER_ID),
+            "transaction_type": "BUY",
+            "transaction_at": "2026-01-02T00:00:00+00:00",
+            "quantity": "2",
+            "currency": "USD",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "BUY and SELL drafts require quantity and unit_price"
+    )
+    assert len(calls) == 1
     app.dependency_overrides.clear()
 
 
@@ -913,6 +953,31 @@ def test_transaction_draft_confirm_hides_other_users_drafts(monkeypatch):
     response = client.post(f"/api/portfolio/transaction-drafts/{INBOX_ID}/confirm")
 
     assert response.status_code == 404
+    app.dependency_overrides.clear()
+
+
+def test_transaction_draft_confirm_returns_bad_request_for_invalid_economics(
+    monkeypatch,
+):
+    class FakeWorkflowRepository:
+        def confirm_draft(self, *, user_id, draft_id):
+            raise ValueError(
+                "BUY gross amount does not match quantity \u00d7 unit price."
+            )
+
+    monkeypatch.setattr(
+        portfolio,
+        "SupabaseTransactionWorkflowRepository",
+        lambda: FakeWorkflowRepository(),
+    )
+    client, app = make_client(USER_A)
+
+    response = client.post(f"/api/portfolio/transaction-drafts/{INBOX_ID}/confirm")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == (
+        "BUY gross amount does not match quantity \u00d7 unit price."
+    )
     app.dependency_overrides.clear()
 
 

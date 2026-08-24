@@ -24,6 +24,7 @@ def tx(
     sequence: int,
     *,
     quantity: str | None = None,
+    unit_price: str | None = None,
     gross_amount: str | None = None,
     fee_amount: str | None = None,
     fee_unit: str | None = None,
@@ -31,6 +32,16 @@ def tx(
     reversal_of_transaction_id: str | None = None,
     asset_id: str = ASSET_ID,
 ) -> TransactionRecord:
+    quantity_decimal = Decimal(quantity) if quantity is not None else None
+    gross_decimal = Decimal(gross_amount) if gross_amount is not None else None
+    unit_price_decimal = Decimal(unit_price) if unit_price is not None else None
+    if (
+        transaction_type in {"BUY", "SELL"}
+        and unit_price_decimal is None
+        and quantity_decimal is not None
+        and gross_decimal is not None
+    ):
+        unit_price_decimal = gross_decimal / quantity_decimal
     return TransactionRecord(
         id=tx_id,
         investment_account_id=ACCOUNT_ID,
@@ -42,8 +53,9 @@ def tx(
         transaction_type=transaction_type,
         transaction_at=datetime(2026, 1, sequence, tzinfo=UTC),
         ledger_sequence=sequence,
-        quantity=Decimal(quantity) if quantity is not None else None,
-        gross_amount=Decimal(gross_amount) if gross_amount is not None else None,
+        quantity=quantity_decimal,
+        unit_price=unit_price_decimal,
+        gross_amount=gross_decimal,
         fee_amount=Decimal(fee_amount) if fee_amount is not None else None,
         fee_unit=fee_unit,
         currency="USD",
@@ -111,6 +123,102 @@ def test_buy_cost_basis_uses_quantity_times_unit_price_when_gross_amount_missing
     assert position.quantity == Decimal("2")
     assert position.cost_basis_thb == Decimal("735")
     assert position.cash_flow_thb == Decimal("-735")
+
+
+def test_replay_rejects_inconsistent_buy_gross_amount():
+    with pytest.raises(LedgerReplayError, match="BUY gross amount does not match"):
+        only_position(
+            [
+                tx(
+                    "buy-1",
+                    "BUY",
+                    1,
+                    quantity="3",
+                    unit_price="100",
+                    gross_amount="200",
+                )
+            ]
+        )
+
+
+def test_replay_uses_calculated_trade_gross_and_keeps_fee_separate():
+    position = only_position(
+        [
+            tx(
+                "buy-1",
+                "BUY",
+                1,
+                quantity="2",
+                unit_price="100",
+                gross_amount="200.000000000000000001",
+                fee_amount="5",
+                fee_unit="QUOTE_CURRENCY",
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.cost_basis_thb == Decimal("205")
+    assert position.fees_thb == Decimal("5")
+    assert position.cash_flow_thb == Decimal("-205")
+
+
+def test_quantity_only_staking_increases_quantity_without_income_value():
+    position = only_position(
+        [
+            tx(
+                "stake-1",
+                "STAKING",
+                1,
+                quantity="0.05",
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("0.05")
+    assert position.income_thb == Decimal("0")
+    assert position.cash_flow_thb == Decimal("0")
+
+
+def test_valued_staking_uses_quantity_times_unit_price_when_gross_missing():
+    position = only_position(
+        [
+            tx(
+                "stake-1",
+                "STAKING",
+                1,
+                quantity="0.05",
+                unit_price="150",
+                gross_amount=None,
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("0.05")
+    assert position.income_thb == Decimal("7.50")
+    assert position.cash_flow_thb == Decimal("7.50")
+
+
+def test_staking_uses_explicit_gross_without_trade_mismatch_validation():
+    position = only_position(
+        [
+            tx(
+                "stake-1",
+                "STAKING",
+                1,
+                quantity="0.05",
+                unit_price="150",
+                gross_amount="8",
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("0.05")
+    assert position.income_thb == Decimal("8")
+    assert position.cash_flow_thb == Decimal("8")
 
 
 def test_tiny_fractional_residue_is_normalized_to_zero():

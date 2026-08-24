@@ -208,10 +208,41 @@ def test_current_workbook_builds_review_only_plan(tmp_path: Path):
     assert btc.currency == "USDT"
     assert btc.fee_unit == FeeUnit.ASSET_UNITS
     assert btc.fee_amount == Decimal("0.0000023")
+    assert btc.gross_amount == btc.quantity * btc.unit_price
     assert btc.raw_source_data["sheet"] == "Transactions"
     assert btc.raw_source_data["row_number"] == 5
     assert btc.source_metadata["formula_derived_summary_columns_ignored"] is True
     assert plan.report()["counts"]["asset_unit_fee_rows"] == 1
+
+
+def test_staking_import_populates_gross_from_quantity_and_unit_price(tmp_path: Path):
+    staking = _row(
+        "SRC-SOL-STAKING",
+        "2026-01-01",
+        "Best",
+        "SOL",
+        "Crypto",
+        "STAKING",
+        0.05,
+        150,
+        0,
+        "Quote Currency",
+        "USD",
+        35,
+    )
+    plan = build_import_plan(
+        _write_workbook(
+            tmp_path / "staking.xlsx",
+            rows=[staking],
+            holdings=[("Best", "SOL", Decimal("0.05"))],
+        ),
+        spreadsheet_id=SPREADSHEET_ID,
+    )
+
+    assert plan.issues == []
+    transaction = plan.transactions[0]
+    assert transaction.transaction_type == "STAKING"
+    assert transaction.gross_amount == Decimal("7.5")
 
 
 def test_formula_derived_transaction_price_is_isolated(tmp_path: Path):
@@ -523,6 +554,9 @@ def test_repository_stages_drafts_and_never_confirms_transactions(tmp_path: Path
     btc = next(row for row in drafts if row["source_identifier"] == "SRC-BTC")
     assert btc["fee_unit"] == "ASSET_UNITS"
     assert btc["fee_amount"] == "0.0000023"
+    assert Decimal(btc["gross_amount"]) == (
+        Decimal(btc["quantity"]) * Decimal(btc["unit_price"])
+    )
     batch_updates = [
         query
         for query in client.queries

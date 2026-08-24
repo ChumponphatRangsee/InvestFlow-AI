@@ -137,6 +137,18 @@ def test_list_drafts_filters_to_owner_and_pending_status():
 
 def test_confirm_draft_calls_atomic_rpc_with_verified_owner():
     client = RecordingClient()
+    client.queue_table(
+        "transaction_drafts",
+        [
+            {
+                "id": str(DRAFT_ID),
+                "transaction_type": "BUY",
+                "quantity": "2",
+                "unit_price": "100",
+                "gross_amount": "200",
+            }
+        ],
+    )
 
     transaction = SupabaseTransactionWorkflowRepository(client).confirm_draft(
         user_id=USER_ID,
@@ -154,6 +166,18 @@ def test_confirm_draft_calls_atomic_rpc_with_verified_owner():
 
 def test_confirm_draft_maps_not_found_rpc_error():
     client = RecordingClient()
+    client.queue_table(
+        "transaction_drafts",
+        [
+            {
+                "id": str(DRAFT_ID),
+                "transaction_type": "BUY",
+                "quantity": "2",
+                "unit_price": "100",
+                "gross_amount": "200",
+            }
+        ],
+    )
     client.rpc_error = RuntimeError("Transaction draft not found")
 
     with pytest.raises(TransactionDraftNotFound):
@@ -161,6 +185,31 @@ def test_confirm_draft_maps_not_found_rpc_error():
             user_id=USER_ID,
             draft_id=DRAFT_ID,
         )
+
+
+def test_confirm_draft_rejects_inconsistent_import_before_rpc():
+    client = RecordingClient()
+    client.queue_table(
+        "transaction_drafts",
+        [
+            {
+                "id": str(DRAFT_ID),
+                "source_type": "GOOGLE_SHEETS",
+                "transaction_type": "BUY",
+                "quantity": "3",
+                "unit_price": "100",
+                "gross_amount": "200",
+            }
+        ],
+    )
+
+    with pytest.raises(ValueError, match="BUY gross amount does not match"):
+        SupabaseTransactionWorkflowRepository(client).confirm_draft(
+            user_id=USER_ID,
+            draft_id=DRAFT_ID,
+        )
+
+    assert client.rpcs == []
 
 
 def test_create_draft_inserts_verified_owner_and_manual_defaults():
@@ -187,6 +236,23 @@ def test_create_draft_inserts_verified_owner_and_manual_defaults():
     assert draft["source_type"] == "MANUAL"
     assert draft["raw_source_data"] == {}
     assert draft["source_metadata"] == {"entry_method": "manual"}
+
+
+def test_create_draft_rejects_inconsistent_buy_before_insert():
+    client = RecordingClient()
+
+    with pytest.raises(ValueError, match="BUY gross amount does not match"):
+        SupabaseTransactionWorkflowRepository(client).create_draft(
+            user_id=USER_ID,
+            payload={
+                "transaction_type": "BUY",
+                "quantity": "3",
+                "unit_price": "100",
+                "gross_amount": "200",
+            },
+        )
+
+    assert client.executed == []
 
 
 def test_update_draft_rejects_confirmed_draft_and_scopes_update():
@@ -226,6 +292,32 @@ def test_update_draft_rejects_confirmed_draft_and_scopes_update():
         )
 
 
+def test_update_draft_validates_merged_trade_economics():
+    client = RecordingClient()
+    client.queue_table(
+        "transaction_drafts",
+        [
+            {
+                "id": str(DRAFT_ID),
+                "transaction_type": "SELL",
+                "quantity": "5",
+                "unit_price": "20",
+                "gross_amount": "100",
+            }
+        ],
+    )
+    client.queue_table("transactions", [])
+
+    with pytest.raises(ValueError, match="SELL gross amount does not match"):
+        SupabaseTransactionWorkflowRepository(client).update_draft(
+            user_id=USER_ID,
+            draft_id=DRAFT_ID,
+            payload={"quantity": "6"},
+        )
+
+    assert len(client.executed) == 2
+
+
 def test_create_correction_draft_copies_original_and_marks_metadata():
     client = RecordingClient()
     client.queue_table(
@@ -252,13 +344,18 @@ def test_create_correction_draft_copies_original_and_marks_metadata():
     draft = SupabaseTransactionWorkflowRepository(client).create_correction_draft(
         user_id=USER_ID,
         transaction_id=DRAFT_ID,
-        payload={"quantity": "3", "notes": "correct quantity"},
+        payload={
+            "quantity": "3",
+            "gross_amount": "30",
+            "notes": "correct quantity",
+        },
     )
 
     assert draft["user_id"] == str(USER_ID)
     assert draft["transaction_type"] == "BUY"
     assert draft["quantity"] == "3"
     assert draft["unit_price"] == "10"
+    assert draft["gross_amount"] == "30"
     assert draft["reversal_of_transaction_id"] is None
     assert draft["source_identifier"] == f"correction:{DRAFT_ID}"
     assert draft["source_metadata"] == {

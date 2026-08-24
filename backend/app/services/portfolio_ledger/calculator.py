@@ -12,6 +12,12 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
+from app.services.portfolio_ledger.economics import (
+    TRADE_TRANSACTION_TYPES,
+    TransactionEconomicError,
+    validate_transaction_economics,
+)
+
 
 ZERO = Decimal("0")
 POSITION_ZERO_TOLERANCE = Decimal("0.000001")
@@ -423,9 +429,24 @@ def _money_thb(amount: Decimal | None, fx_rate_to_thb: Decimal | None) -> Decima
 
 
 def _gross_amount_thb(record: TransactionRecord) -> Decimal:
+    if record.transaction_type in TRADE_TRANSACTION_TYPES:
+        try:
+            calculated_gross = validate_transaction_economics(
+                transaction_type=record.transaction_type,
+                quantity=record.quantity,
+                unit_price=record.unit_price,
+                gross_amount=record.gross_amount,
+            )
+        except TransactionEconomicError as exc:
+            raise LedgerReplayError(f"Transaction {record.id}: {exc}") from exc
+        return _money_thb(calculated_gross, record.fx_rate_to_thb)
     if record.gross_amount is not None:
         return _money_thb(record.gross_amount, record.fx_rate_to_thb)
-    if record.quantity is not None and record.unit_price is not None:
+    if (
+        record.transaction_type == "STAKING"
+        and record.quantity is not None
+        and record.unit_price is not None
+    ):
         return _money_thb(record.quantity * record.unit_price, record.fx_rate_to_thb)
     return ZERO
 

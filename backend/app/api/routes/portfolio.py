@@ -11,7 +11,10 @@ from app.db.supabase import get_supabase_client
 from app.services.portfolio_import.repository import (
     SupabaseTransactionImportRepository,
 )
-from app.services.portfolio_ledger import SupabasePortfolioLedgerRepository
+from app.services.portfolio_ledger import (
+    SupabasePortfolioLedgerRepository,
+    validate_transaction_economics,
+)
 from app.services.portfolio_workflow import (
     SupabaseTransactionWorkflowRepository,
     TransactionAlreadyReversed,
@@ -218,10 +221,12 @@ def _validate_draft_economics(
     unit_price: Decimal | None,
     gross_amount: Decimal | None,
 ) -> None:
-    if transaction_type in {"BUY", "SELL"} and (
-        quantity is None or unit_price is None
-    ):
-        raise ValueError("BUY and SELL drafts require quantity and unit_price")
+    validate_transaction_economics(
+        transaction_type=transaction_type,
+        quantity=quantity,
+        unit_price=unit_price,
+        gross_amount=gross_amount,
+    )
     if transaction_type in {"DIVIDEND", "INTEREST", "FEE"} and gross_amount is None:
         raise ValueError(f"{transaction_type} drafts require gross_amount")
     if transaction_type in {"TRANSFER_IN", "TRANSFER_OUT"} and quantity is None:
@@ -452,6 +457,8 @@ async def update_transaction_draft(
         raise HTTPException(status_code=404, detail="Transaction draft not found") from exc
     except TransactionDraftAlreadyConfirmed as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "draft_updated", "draft": draft}
 
 
@@ -468,6 +475,8 @@ async def confirm_transaction_draft(
         )
     except TransactionDraftNotFound as exc:
         raise HTTPException(status_code=404, detail="Transaction draft not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {"status": "confirmed", "transaction": transaction}
 
 

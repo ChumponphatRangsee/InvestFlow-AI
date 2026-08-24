@@ -196,6 +196,87 @@ function nullableString(value: string) {
   return trimmed === "" ? null : trimmed;
 }
 
+const TRADE_GROSS_TOLERANCE = "0.000000000000000001";
+const BIGINT_ZERO = BigInt(0);
+const BIGINT_ONE = BigInt(1);
+const BIGINT_TEN = BigInt(10);
+
+type ParsedDecimal = {
+  coefficient: bigint;
+  scale: number;
+};
+
+function parseDecimalString(value: string): ParsedDecimal | null {
+  const match = value.trim().match(/^(?:(\d+)(?:\.(\d*))?|\.(\d+))$/);
+  if (!match) return null;
+  const whole = match[1] ?? "0";
+  const fraction = match[1] == null ? match[3] ?? "" : match[2] ?? "";
+  return {
+    coefficient: BigInt(`${whole}${fraction}`),
+    scale: fraction.length,
+  };
+}
+
+function powerOfTen(exponent: number) {
+  let value = BIGINT_ONE;
+  for (let index = 0; index < exponent; index += 1) value *= BIGINT_TEN;
+  return value;
+}
+
+function formatParsedDecimal(value: ParsedDecimal) {
+  let coefficient = value.coefficient;
+  let scale = value.scale;
+  while (scale > 0 && coefficient % BIGINT_TEN === BIGINT_ZERO) {
+    coefficient /= BIGINT_TEN;
+    scale -= 1;
+  }
+
+  const digits = coefficient.toString();
+  if (scale === 0) return digits;
+  if (digits.length <= scale) {
+    return `0.${"0".repeat(scale - digits.length)}${digits}`;
+  }
+  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+}
+
+function multiplyDecimalStrings(left: string, right: string) {
+  const leftDecimal = parseDecimalString(left);
+  const rightDecimal = parseDecimalString(right);
+  if (!leftDecimal || !rightDecimal) return null;
+  return formatParsedDecimal({
+    coefficient: leftDecimal.coefficient * rightDecimal.coefficient,
+    scale: leftDecimal.scale + rightDecimal.scale,
+  });
+}
+
+function decimalDifferenceExceedsTolerance(
+  left: string,
+  right: string,
+  tolerance = TRADE_GROSS_TOLERANCE
+) {
+  const leftDecimal = parseDecimalString(left);
+  const rightDecimal = parseDecimalString(right);
+  const toleranceDecimal = parseDecimalString(tolerance);
+  if (!leftDecimal || !rightDecimal || !toleranceDecimal) return true;
+
+  const scale = Math.max(
+    leftDecimal.scale,
+    rightDecimal.scale,
+    toleranceDecimal.scale
+  );
+  const leftScaled =
+    leftDecimal.coefficient * powerOfTen(scale - leftDecimal.scale);
+  const rightScaled =
+    rightDecimal.coefficient * powerOfTen(scale - rightDecimal.scale);
+  const toleranceScaled =
+    toleranceDecimal.coefficient * powerOfTen(scale - toleranceDecimal.scale);
+  const difference =
+    leftScaled >= rightScaled
+      ? leftScaled - rightScaled
+      : rightScaled - leftScaled;
+  return difference > toleranceScaled;
+}
+
 export function PortfolioWorkbench() {
   const [activeTab, setActiveTab] = useState<PortfolioTab>("overview");
   const [ledgerView, setLedgerView] = useState<LedgerView>("summary");
@@ -1332,6 +1413,33 @@ function DraftEditPanel({
     draft.source_row_number == null ? "" : String(draft.source_row_number)
   );
   const [notes, setNotes] = useState(draft.notes ?? "");
+  const isTrade = draft.transaction_type === "BUY" || draft.transaction_type === "SELL";
+  const preserveReportedGross = draft.source_type !== "MANUAL";
+  const calculatedGross = useMemo(
+    () => (isTrade ? multiplyDecimalStrings(quantity, unitPrice) : null),
+    [isTrade, quantity, unitPrice]
+  );
+  const reportedGross = nullableString(grossAmount);
+  const grossMismatch = Boolean(
+    isTrade &&
+      calculatedGross &&
+      reportedGross &&
+      decimalDifferenceExceedsTolerance(calculatedGross, reportedGross)
+  );
+
+  function updateQuantity(value: string) {
+    setQuantity(value);
+    if (!preserveReportedGross) {
+      setGrossAmount(multiplyDecimalStrings(value, unitPrice) ?? "");
+    }
+  }
+
+  function updateUnitPrice(value: string) {
+    setUnitPrice(value);
+    if (!preserveReportedGross) {
+      setGrossAmount(multiplyDecimalStrings(quantity, value) ?? "");
+    }
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1339,7 +1447,11 @@ function DraftEditPanel({
       transaction_at: new Date(transactionAt).toISOString(),
       quantity: nullableString(quantity),
       unit_price: nullableString(unitPrice),
-      gross_amount: nullableString(grossAmount),
+      gross_amount: isTrade
+        ? preserveReportedGross
+          ? reportedGross ?? calculatedGross
+          : calculatedGross
+        : reportedGross,
       fee_amount: nullableString(feeAmount),
       fee_unit: feeUnit === "" ? null : (feeUnit as "QUOTE_CURRENCY" | "ASSET_UNITS"),
       currency: currency.trim().toUpperCase(),
@@ -1372,10 +1484,49 @@ function DraftEditPanel({
             required
           />
         </label>
-        <DraftNumberInput label="Quantity" value={quantity} onChange={setQuantity} />
-        <DraftNumberInput label="Unit price" value={unitPrice} onChange={setUnitPrice} />
-        <DraftNumberInput label="Gross amount" value={grossAmount} onChange={setGrossAmount} />
+        <DraftNumberInput label="Quantity" value={quantity} onChange={updateQuantity} />
+        <DraftNumberInput label="Unit price" value={unitPrice} onChange={updateUnitPrice} />
+        {isTrade ? (
+          <>
+            <label className="block text-sm font-medium">
+              Calculated gross
+              <input
+                value={calculatedGross ?? ""}
+                className="mt-1 h-10 w-full rounded-md border bg-muted px-3 text-sm tabular-nums"
+                readOnly
+              />
+            </label>
+            {(preserveReportedGross || grossMismatch) && (
+              <div>
+                <DraftNumberInput
+                  label="Reported gross"
+                  value={grossAmount}
+                  onChange={setGrossAmount}
+                  invalid={grossMismatch}
+                />
+                {grossMismatch && (
+                  <div className="mt-1 flex items-center justify-between gap-2 text-xs text-destructive">
+                    <span>Reported gross does not match quantity x unit price.</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setGrossAmount(calculatedGross ?? "")}
+                    >
+                      Use calculated
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <DraftNumberInput label="Gross amount" value={grossAmount} onChange={setGrossAmount} />
+        )}
         <DraftNumberInput label="Fee amount" value={feeAmount} onChange={setFeeAmount} />
+        <p className="text-xs text-muted-foreground md:col-span-4">
+          Use plain decimal format, e.g. 1000 not 1e3.
+        </p>
         <label className="block text-sm font-medium">
           Fee unit
           <select
@@ -1429,7 +1580,16 @@ function DraftEditPanel({
           />
         </label>
         <div className="flex gap-2 md:col-span-4">
-          <Button type="submit" disabled={updating || !transactionAt || !currency.trim()}>
+          <Button
+            type="submit"
+            disabled={
+              updating ||
+              !transactionAt ||
+              !currency.trim() ||
+              (isTrade && !calculatedGross) ||
+              grossMismatch
+            }
+          >
             {updating ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
@@ -1451,10 +1611,12 @@ function DraftNumberInput({
   label,
   value,
   onChange,
+  invalid = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  invalid?: boolean;
 }) {
   return (
     <label className="block text-sm font-medium">
@@ -1465,7 +1627,11 @@ function DraftNumberInput({
         min={0}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary"
+        className={cn(
+          "mt-1 h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-primary",
+          invalid && "border-destructive text-destructive focus:border-destructive"
+        )}
+        aria-invalid={invalid}
       />
     </label>
   );
@@ -1912,7 +2078,7 @@ function DraftTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[1120px] text-left text-sm">
+      <table className="w-full min-w-[1200px] text-left text-sm">
         <thead className="border-b bg-muted/50 text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             {[
@@ -1923,6 +2089,7 @@ function DraftTable({
               "Type",
               "Quantity",
               "Price",
+              "Gross",
               "Fee",
               "FX",
               "Ledger link",
@@ -1937,7 +2104,7 @@ function DraftTable({
         <tbody className="divide-y">
           {drafts.length === 0 && (
             <tr>
-              <td colSpan={11} className="h-40 px-6 text-center text-muted-foreground">
+              <td colSpan={12} className="h-40 px-6 text-center text-muted-foreground">
                 {emptyMessage}
               </td>
             </tr>
@@ -1966,6 +2133,9 @@ function DraftTable({
               <td className="px-4 py-4 tabular-nums">{formatDecimal(draft.quantity, 8)}</td>
               <td className="px-4 py-4 tabular-nums">
                 {formatDecimal(draft.unit_price, 8)} {draft.currency}
+              </td>
+              <td className="px-4 py-4 tabular-nums">
+                {formatDecimal(draft.gross_amount, 8)} {draft.currency}
               </td>
               <td className="px-4 py-4 tabular-nums">
                 {formatDecimal(draft.fee_amount, 8)}

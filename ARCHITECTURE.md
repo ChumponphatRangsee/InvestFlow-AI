@@ -326,6 +326,12 @@ missing inputs remain null. `transaction_at` plus a generated
 confirmed rows. This makes repeated spreadsheet staging race-safe while manual
 drafts without an import batch can still omit a fingerprint.
 
+For `BUY` and `SELL`, `gross_amount` is optional pre-fee trade notional in the
+transaction currency. The authoritative notional is `quantity * unit_price`;
+when gross is supplied as source evidence, it must match within
+`0.000000000000000001`, the smallest stored `numeric(38,18)` fractional unit.
+Quote-currency and asset-unit fees remain separate and never change gross.
+
 Confirmed UPDATE and DELETE are blocked three ways: neither operation is
 granted to authenticated or service roles, neither has an RLS policy, and a
 database trigger rejects the operation even for a privileged table owner.

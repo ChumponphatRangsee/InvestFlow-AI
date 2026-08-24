@@ -21,6 +21,10 @@ from app.services.portfolio_import.models import (
     NormalizedTransaction,
     WorkbookTransactionRow,
 )
+from app.services.portfolio_ledger.economics import (
+    TRADE_TRANSACTION_TYPES,
+    validate_transaction_economics,
+)
 
 WORKBOOK_TIME_ZONE = ZoneInfo("Asia/Bangkok")
 POSITION_TOLERANCE = Decimal("0.000001")
@@ -298,7 +302,20 @@ def _normalize_row(
         return None, issues
 
     gross_amount = None
-    if transaction_type in {"DIVIDEND", "INTEREST", "FEE"}:
+    if transaction_type in TRADE_TRANSACTION_TYPES:
+        gross_amount = validate_transaction_economics(
+            transaction_type=transaction_type,
+            quantity=quantity,
+            unit_price=unit_price,
+            gross_amount=None,
+        )
+    elif (
+        transaction_type == "STAKING"
+        and quantity is not None
+        and unit_price is not None
+    ):
+        gross_amount = quantity * unit_price
+    elif transaction_type in {"DIVIDEND", "INTEREST", "FEE"}:
         gross_amount = quantity * unit_price if quantity and unit_price else None
 
     asset_currency = currency
