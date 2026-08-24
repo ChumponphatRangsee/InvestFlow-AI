@@ -442,6 +442,12 @@ def _gross_amount_thb(record: TransactionRecord) -> Decimal:
         return _money_thb(calculated_gross, record.fx_rate_to_thb)
     if record.gross_amount is not None:
         return _money_thb(record.gross_amount, record.fx_rate_to_thb)
+    if (
+        record.transaction_type == "STAKING"
+        and record.quantity is not None
+        and record.unit_price is not None
+    ):
+        return _money_thb(record.quantity * record.unit_price, record.fx_rate_to_thb)
     return ZERO
 
 

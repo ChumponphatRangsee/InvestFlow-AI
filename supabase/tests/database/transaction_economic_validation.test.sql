@@ -3,13 +3,20 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS pgtap WITH SCHEMA extensions;
 SET search_path TO public, extensions;
 
-SELECT plan(8);
+SELECT plan(15);
 
 SELECT has_check(
   'public',
   'transactions',
   'transactions_buy_sell_gross_matches_quantity_price',
   'confirmed transactions enforce BUY/SELL gross consistency'
+);
+
+SELECT has_check(
+  'public',
+  'transaction_drafts',
+  'transaction_drafts_buy_sell_gross_matches_quantity_price',
+  'transaction drafts reject inconsistent BUY/SELL gross when complete'
 );
 
 INSERT INTO auth.users (id)
@@ -149,6 +156,104 @@ SELECT lives_ok(
     )
   $$,
   'gross amount may be omitted because quantity * unit_price is authoritative'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.transaction_drafts (
+      user_id, investment_account_id, asset_id, transaction_type,
+      transaction_at, quantity, unit_price, gross_amount, currency, source_type
+    )
+    VALUES (
+      '71000000-0000-4000-8000-000000000001',
+      '72000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001',
+      'BUY', now(), 2, 100, 200, 'USD', 'MANUAL'
+    )
+  $$,
+  'BUY draft 2 * 100 accepts gross 200'
+);
+
+SELECT throws_ok(
+  $$
+    INSERT INTO public.transaction_drafts (
+      user_id, investment_account_id, asset_id, transaction_type,
+      transaction_at, quantity, unit_price, gross_amount, currency, source_type
+    )
+    VALUES (
+      '71000000-0000-4000-8000-000000000001',
+      '72000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001',
+      'BUY', now(), 3, 100, 200, 'USD', 'MANUAL'
+    )
+  $$,
+  '23514',
+  NULL,
+  'BUY draft 3 * 100 rejects gross 200'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.transaction_drafts (
+      user_id, investment_account_id, asset_id, transaction_type,
+      transaction_at, quantity, unit_price, currency, source_type
+    )
+    VALUES (
+      '71000000-0000-4000-8000-000000000001',
+      '72000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001',
+      'BUY', now(), 2, 100, 'USD', 'MANUAL'
+    )
+  $$,
+  'BUY draft with null gross remains allowed'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.transaction_drafts (
+      user_id, investment_account_id, asset_id, transaction_type,
+      transaction_at, unit_price, gross_amount, currency, source_type
+    )
+    VALUES (
+      '71000000-0000-4000-8000-000000000001',
+      '72000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001',
+      'BUY', now(), 100, 200, 'USD', 'MANUAL'
+    )
+  $$,
+  'BUY draft with null quantity remains allowed'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.transaction_drafts (
+      user_id, investment_account_id, asset_id, transaction_type,
+      transaction_at, quantity, gross_amount, currency, source_type
+    )
+    VALUES (
+      '71000000-0000-4000-8000-000000000001',
+      '72000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001',
+      'BUY', now(), 2, 200, 'USD', 'MANUAL'
+    )
+  $$,
+  'BUY draft with null unit price remains allowed'
+);
+
+SELECT lives_ok(
+  $$
+    INSERT INTO public.transaction_drafts (
+      user_id, investment_account_id, asset_id, transaction_type,
+      transaction_at, quantity, unit_price, gross_amount, currency, source_type
+    )
+    VALUES (
+      '71000000-0000-4000-8000-000000000001',
+      '72000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001',
+      'STAKING', now(), 3, 100, 200, 'USD', 'MANUAL'
+    )
+  $$,
+  'STAKING draft is not constrained by BUY/SELL gross matching'
 );
 
 SELECT * FROM finish();

@@ -163,6 +163,64 @@ def test_replay_uses_calculated_trade_gross_and_keeps_fee_separate():
     assert position.cash_flow_thb == Decimal("-205")
 
 
+def test_quantity_only_staking_increases_quantity_without_income_value():
+    position = only_position(
+        [
+            tx(
+                "stake-1",
+                "STAKING",
+                1,
+                quantity="0.05",
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("0.05")
+    assert position.income_thb == Decimal("0")
+    assert position.cash_flow_thb == Decimal("0")
+
+
+def test_valued_staking_uses_quantity_times_unit_price_when_gross_missing():
+    position = only_position(
+        [
+            tx(
+                "stake-1",
+                "STAKING",
+                1,
+                quantity="0.05",
+                unit_price="150",
+                gross_amount=None,
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("0.05")
+    assert position.income_thb == Decimal("7.50")
+    assert position.cash_flow_thb == Decimal("7.50")
+
+
+def test_staking_uses_explicit_gross_without_trade_mismatch_validation():
+    position = only_position(
+        [
+            tx(
+                "stake-1",
+                "STAKING",
+                1,
+                quantity="0.05",
+                unit_price="150",
+                gross_amount="8",
+                fx_rate_to_thb="1",
+            )
+        ]
+    )
+
+    assert position.quantity == Decimal("0.05")
+    assert position.income_thb == Decimal("8")
+    assert position.cash_flow_thb == Decimal("8")
+
+
 def test_tiny_fractional_residue_is_normalized_to_zero():
     position = only_position(
         [

@@ -1524,6 +1524,9 @@ function DraftEditPanel({
           <DraftNumberInput label="Gross amount" value={grossAmount} onChange={setGrossAmount} />
         )}
         <DraftNumberInput label="Fee amount" value={feeAmount} onChange={setFeeAmount} />
+        <p className="text-xs text-muted-foreground md:col-span-4">
+          Use plain decimal format, e.g. 1000 not 1e3.
+        </p>
         <label className="block text-sm font-medium">
           Fee unit
           <select

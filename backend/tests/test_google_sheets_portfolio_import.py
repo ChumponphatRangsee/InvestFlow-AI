@@ -215,6 +215,36 @@ def test_current_workbook_builds_review_only_plan(tmp_path: Path):
     assert plan.report()["counts"]["asset_unit_fee_rows"] == 1
 
 
+def test_staking_import_populates_gross_from_quantity_and_unit_price(tmp_path: Path):
+    staking = _row(
+        "SRC-SOL-STAKING",
+        "2026-01-01",
+        "Best",
+        "SOL",
+        "Crypto",
+        "STAKING",
+        0.05,
+        150,
+        0,
+        "Quote Currency",
+        "USD",
+        35,
+    )
+    plan = build_import_plan(
+        _write_workbook(
+            tmp_path / "staking.xlsx",
+            rows=[staking],
+            holdings=[("Best", "SOL", Decimal("0.05"))],
+        ),
+        spreadsheet_id=SPREADSHEET_ID,
+    )
+
+    assert plan.issues == []
+    transaction = plan.transactions[0]
+    assert transaction.transaction_type == "STAKING"
+    assert transaction.gross_amount == Decimal("7.5")
+
+
 def test_formula_derived_transaction_price_is_isolated(tmp_path: Path):
     path = _write_workbook(tmp_path / "formula-price.xlsx")
     workbook = load_workbook(path)

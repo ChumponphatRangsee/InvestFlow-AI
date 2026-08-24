@@ -309,6 +309,12 @@ def _normalize_row(
             unit_price=unit_price,
             gross_amount=None,
         )
+    elif (
+        transaction_type == "STAKING"
+        and quantity is not None
+        and unit_price is not None
+    ):
+        gross_amount = quantity * unit_price
     elif transaction_type in {"DIVIDEND", "INTEREST", "FEE"}:
         gross_amount = quantity * unit_price if quantity and unit_price else None
 
